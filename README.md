@@ -1,63 +1,202 @@
 # PharmaML
 
-PharmaML is a pharmaceutical demand forecasting and inventory intelligence platform. It combines a machine-learning forecasting pipeline, a FastAPI service, PostgreSQL persistence, and a React operations dashboard.
+[![CI](https://github.com/Rishi-Mishima/pharmPrediciton/actions/workflows/ci.yml/badge.svg)](https://github.com/Rishi-Mishima/pharmPrediciton/actions/workflows/ci.yml)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Rishi-Mishima/pharmPrediciton)
+
+PharmaML is a pharmaceutical demand forecasting and inventory intelligence platform. It combines a trained forecasting model, FastAPI, PostgreSQL, and a React operations dashboard in a production-shaped container stack.
+
+## Dashboard
 
 ![PharmaML dashboard](docs/images/pharmaml-dashboard.png)
 
-## Features
+The dashboard shows current stock, next-day forecast demand, inventory risk, demand trends, filters, and product-level replenishment details. If the API is unavailable, only the chart uses isolated sample history; live inventory is never fabricated.
 
-- Pharmaceutical demand forecasting from historical demand data
-- Lag, rolling-window, and cyclical calendar features
-- Linear Regression and XGBoost model comparison
-- Time-series cross-validation and saved-model inference
-- Drug, demand history, and inventory APIs
-- Inventory risk classification and replenishment recommendations
-- Responsive React dashboard with KPI cards, demand trends, filters, and product details
+## Architecture
 
-## How It Works
+```mermaid
+flowchart LR
+    User[Browser] -->|HTTP :3000| Web[Nginx frontend container]
+    Web -->|Static assets| React[React dashboard]
+    Web -->|/api reverse proxy| API[FastAPI container]
+    API --> Model[Joblib forecasting model]
+    API --> DB[(PostgreSQL)]
+    Seed[Idempotent seed job] --> DB
 
-The application has three runtime layers:
+    GitHub[GitHub push / PR] --> CI[GitHub Actions CI]
+    CI --> FrontendChecks[Lint + TypeScript build]
+    CI --> BackendChecks[Pytest + PostgreSQL]
+    CI --> StackChecks[Docker Compose integration tests]
 
-1. The React frontend runs on port `5173` and requests operational data from FastAPI.
-2. FastAPI runs on port `8000`, loads the trained Joblib model, serves forecasts, and reads or writes application data.
-3. PostgreSQL runs on port `5432` and stores drugs, demand history, and inventory records.
+    Render[Render Blueprint] -. deploys .-> Web
+    Render -. deploys .-> API
+    Render -. provisions .-> DB
+```
 
-When the dashboard opens, it checks `/health`, loads drugs and inventory, fetches the primary drug's demand history, and requests its next forecast. Inventory statuses are calculated from current stock and safety stock:
+### Request Flow
 
-- **Critical:** current stock is at or below 50% of safety stock
-- **Low Stock:** current stock is at or below safety stock
-- **Healthy:** current stock is above safety stock
+1. Nginx serves the compiled React application.
+2. Browser requests to `/api/*` are proxied to FastAPI, so production uses one browser origin and does not depend on a hard-coded API hostname.
+3. FastAPI loads the saved model, reads and writes PostgreSQL data, and returns forecasts and inventory risk.
+4. The seed job runs after the API is healthy. It creates Paracetamol, imports only missing demand dates, and ensures an initial inventory record exists.
 
-If the API is unavailable, the dashboard keeps a local sample demand series for the chart, but it does not invent live drug or inventory records. The header displays `API offline` until FastAPI is reachable.
+## One-Command Start
 
-## Tech Stack
+### Prerequisites
 
-### Backend
+- Docker Desktop with Docker Compose
+- At least 4 GB of memory available to Docker
 
-- Python and FastAPI
-- PostgreSQL and SQLAlchemy
-- pandas and scikit-learn
-- Joblib model persistence
-- Docker Compose
+Start the complete stack from the repository root:
+
+```bash
+docker compose up --build
+```
+
+That single command starts the services in dependency order:
+
+```text
+PostgreSQL -> FastAPI -> idempotent seed job -> Nginx/React frontend
+```
+
+Open:
+
+- Dashboard: <http://localhost:3000>
+- API documentation: <http://localhost:8000/docs>
+- API health: <http://localhost:3000/api/health>
+
+To run in the background:
+
+```bash
+docker compose up --build -d
+docker compose ps
+```
+
+To stop the stack without deleting database data:
+
+```bash
+docker compose down
+```
+
+The PostgreSQL named volume is preserved between restarts. The seed job is safe to run again and inserts only missing data.
+
+## Local Frontend Development
+
+For Vite hot reload, keep the database and API in Docker and run the frontend locally:
+
+```bash
+docker compose up --build -d db api seed
+
+cd frontend
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Open <http://localhost:5173>. Vite proxies `/api` to `http://localhost:8000`.
+
+## Tests
 
 ### Frontend
 
-- React and TypeScript
-- Vite and Tailwind CSS
-- Recharts
-- Axios
-- Lucide React
+```bash
+cd frontend
+npm run lint
+npm run build
+```
+
+### Backend
+
+With the Compose stack running:
+
+```bash
+docker compose exec api pytest tests/test_api.py -q
+```
+
+### Full-Stack Integration
+
+The integration suite verifies:
+
+- Nginx serves the production frontend
+- `/api` correctly proxies FastAPI
+- the API and model are healthy
+- seeded drug and inventory records are available
+- a forecast can be generated from seeded history
+
+Run it with:
+
+```bash
+docker compose exec \
+  -e RUN_INTEGRATION_TESTS=1 \
+  -e API_BASE_URL=http://api:8000 \
+  -e FRONTEND_BASE_URL=http://frontend \
+  api pytest tests/integration -q
+```
+
+## Continuous Integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on pushes to `main` and on pull requests.
+
+| Job | What it validates |
+|---|---|
+| Frontend lint and build | ESLint, TypeScript, and the production Vite bundle |
+| Backend tests | FastAPI tests against a PostgreSQL service container |
+| Full-stack integration | Production containers, health checks, seed data, Nginx proxy, and forecasts |
+
+The integration job prints container logs on failure and always removes its temporary containers and volume.
+
+## Cloud Deployment
+
+The repository includes a [`render.yaml`](render.yaml) Blueprint that declares:
+
+- a Dockerized Nginx/React web service
+- a Dockerized FastAPI web service
+- a managed PostgreSQL database
+- private service-to-service API routing
+- health checks and idempotent pre-deploy seeding
+
+To deploy:
+
+1. Push the repository to GitHub.
+2. Click **Deploy to Render** at the top of this README, or create a new Blueprint in Render and select this repository.
+3. Review the three resources and apply the Blueprint.
+4. Open the generated `pharmaml-dashboard` URL after all health checks pass.
+
+No database password or API hostname is committed. Render injects the PostgreSQL connection string and internal API host from Blueprint resource references. See the official [Render Blueprint documentation](https://render.com/docs/infrastructure-as-code) for account and plan details.
+
+## Configuration
+
+| Variable | Service | Default / purpose |
+|---|---|---|
+| `DATABASE_URL` | API and seed | PostgreSQL connection string; generic provider URLs are normalized for psycopg 3 |
+| `CORS_ORIGINS` | API | Comma-separated origins for direct browser API access |
+| `PORT` | API/frontend | Container listening port; cloud platforms can inject it |
+| `API_HOSTPORT` | frontend | Internal FastAPI host and port used by Nginx |
+| `VITE_API_BASE_URL` | Vite build | `/api` by default |
+
+## Inventory Rules
+
+- **Critical:** `current_stock <= safety_stock * 0.5`
+- **Low Stock:** `current_stock <= safety_stock`
+- **Healthy:** `current_stock > safety_stock`
+
+## API
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/health` | API and model health |
+| `GET` | `/model/info` | Model type, features, and metrics |
+| `POST` | `/predict` | Feature-based demand prediction |
+| `GET` | `/drugs` | List drugs |
+| `POST` | `/drugs` | Create a drug |
+| `GET` | `/drugs/{drug_id}/demand-history` | Retrieve demand history |
+| `POST` | `/drugs/{drug_id}/forecast` | Forecast the next demand value |
+| `GET` | `/inventory` | List inventory records |
+| `POST` | `/inventory` | Create an inventory record |
+| `GET` | `/inventory/{drug_id}/risk` | Forecast-based inventory risk |
 
 ## Model
 
-The forecasting model uses:
-
-- Lag features: 1, 7, 14, and 28 days
-- Rolling means: 7 and 28 days
-- Day-of-week, monthly, and annual seasonality
-- Weekend indicator
-
-Linear Regression was selected as the final model based on time-series cross-validation performance.
+The forecasting model uses 1, 7, 14, and 28-day lag features; 7 and 28-day rolling means; cyclical calendar features; and a weekend indicator. Linear Regression was selected using time-series cross-validation.
 
 | Metric | Result |
 |---|---:|
@@ -66,168 +205,41 @@ Linear Regression was selected as the final model based on time-series cross-val
 | Test RMSE | 12.299 |
 | Test WAPE | 30.86% |
 
-## Run Locally
-
-### Prerequisites
-
-- Docker Desktop
-- Node.js 20 or newer
-- npm
-
-The Python virtual environment is not required for the recommended Docker workflow.
-
-### 1. Start Docker Desktop
-
-Make sure Docker Desktop is running before starting the backend. On macOS, you can launch it with:
-
-```bash
-open -a Docker
-```
-
-Verify that the Docker engine is ready:
-
-```bash
-docker info
-```
-
-### 2. Start PostgreSQL and FastAPI
-
-From the project root:
-
-```bash
-docker compose up --build -d
-```
-
-Check the running services:
-
-```bash
-docker compose ps
-```
-
-The backend is now available at:
-
-- API: <http://localhost:8000>
-- Interactive API documentation: <http://localhost:8000/docs>
-- Health check: <http://localhost:8000/health>
-
-### 3. Import the Sample Demand History
-
-Run the seed script once on a fresh database:
-
-```bash
-docker compose exec api python scripts/seed_database.py
-```
-
-This creates the `N02BE` Paracetamol drug and imports its historical demand data. The current seed script is not idempotent, so running it repeatedly will duplicate demand-history rows.
-
-### 4. Add an Inventory Record
-
-The seed script imports demand history but does not create inventory. First inspect the drug ID:
-
-```bash
-curl http://localhost:8000/drugs
-```
-
-Then create inventory, replacing `drug_id` if necessary:
-
-```bash
-curl -X POST http://localhost:8000/inventory \
-  -H "Content-Type: application/json" \
-  -d '{
-    "drug_id": 1,
-    "current_stock": 500,
-    "safety_stock": 200,
-    "lead_time_days": 7
-  }'
-```
-
-### 5. Start the Frontend
-
-Open a second terminal:
-
-```bash
-cd frontend
-npm install
-cp .env.example .env
-npm run dev
-```
-
-Open the dashboard at <http://localhost:5173>.
-
-The frontend uses `http://localhost:8000` by default. To use another API URL, update `VITE_API_BASE_URL` in `frontend/.env`.
-
-### Stop the Application
-
-Stop the frontend with `Ctrl+C`. Then stop the backend and database from the project root:
-
-```bash
-docker compose down
-```
-
-The PostgreSQL volume is preserved, so imported data remains available the next time the application starts.
-
-## API
-
-Main endpoints include:
-
-- `GET /health` - API and model health
-- `GET /model/info` - model metadata and evaluation metrics
-- `POST /predict` - feature-based demand prediction
-- `GET /drugs` - list drugs
-- `POST /drugs` - create a drug
-- `GET /drugs/{drug_id}/demand-history` - retrieve demand history
-- `POST /drugs/{drug_id}/forecast` - forecast the next demand value
-- `GET /inventory` - list inventory records
-- `POST /inventory` - create an inventory record
-- `GET /inventory/{drug_id}/risk` - forecast-based inventory risk
-
-## Development Checks
-
-Frontend:
-
-```bash
-cd frontend
-npm run lint
-npm run build
-```
-
-Backend tests inside Docker:
-
-```bash
-docker compose exec api pytest
-```
-
 ## Project Structure
 
 ```text
 PharmaML/
-|-- app/                    # FastAPI routes, schemas, database, and model loader
-|-- data/                   # Raw and processed demand data
-|-- docs/images/            # README screenshots
-|-- frontend/               # React and TypeScript dashboard
-|-- models/                 # Saved forecasting model and metadata
-|-- scripts/                # Database seed utilities
-|-- src/                    # Training and feature-engineering code
-|-- tests/                  # Backend tests
-|-- docker-compose.yml      # API and PostgreSQL services
-|-- Dockerfile              # FastAPI container image
-|-- requirements.txt        # Python dependencies
+|-- .github/workflows/ci.yml     # Frontend, backend, and integration CI
+|-- app/                         # FastAPI, SQLAlchemy, and model serving
+|-- data/                        # Raw and processed demand data
+|-- docs/images/                 # Dashboard screenshots
+|-- frontend/                    # React app and production Nginx image
+|-- models/                      # Saved forecasting model and metadata
+|-- scripts/                     # Idempotent database seed job
+|-- tests/integration/           # Live full-stack tests
+|-- docker-compose.yml           # Local full-stack orchestration
+|-- render.yaml                  # Render cloud infrastructure
+|-- Dockerfile                   # FastAPI image
 `-- README.md
 ```
 
 ## Troubleshooting
 
-### Docker socket is unavailable
+### Docker cannot connect to `docker.sock`
 
-If `docker compose` reports that it cannot connect to `docker.sock`, start Docker Desktop and wait until `docker info` succeeds.
-
-### The dashboard shows `API offline`
-
-Check the containers and backend logs:
+Start Docker Desktop and wait until this succeeds:
 
 ```bash
-docker compose ps
-docker compose logs api
+docker info
 ```
 
-Confirm that <http://localhost:8000/health> returns a healthy response, then refresh the dashboard.
+### A service does not become healthy
+
+```bash
+docker compose ps -a
+docker compose logs api frontend seed db
+```
+
+### Port already in use
+
+The stack uses host ports `3000`, `8000`, and `5432`. Stop the conflicting process or change the published port on the left side of the corresponding mapping in `docker-compose.yml`.

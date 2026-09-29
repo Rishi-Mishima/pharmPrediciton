@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: pharmaml_test
+          POSTGRES_USER: pharmaml
+          POSTGRES_PASSWORD: pharmaml
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pharmaml -d pharmaml_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://pharmaml:pharmaml@localhost:5432/pharmaml_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest tests/test_api.py -q
+
+  integration:
+    name: Full-stack integration
+    runs-on: ubuntu-latest
+    needs: [frontend, backend]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start the stack
+        run: docker compose up --build -d
+      - name: Wait for the frontend and API
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:3000/api/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose ps
+          exit 1
+      - name: Run integration tests inside the API container
+        run: >-
+          docker compose exec -T
+          -e RUN_INTEGRATION_TESTS=1
+          -e API_BASE_URL=http://api:8000
+          -e FRONTEND_BASE_URL=http://frontend
+          api pytest tests/integration -q
+      - name: Print service logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

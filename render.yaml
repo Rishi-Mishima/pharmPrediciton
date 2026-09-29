@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: pharmaml-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    preDeployCommand: python -m scripts.seed_database
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pharmaml-db
+          property: connectionString
+      - key: CORS_ORIGINS
+        value: ""
+
+  - type: web
+    name: pharmaml-dashboard
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    healthCheckPath: /healthz
+    envVars:
+      - key: API_HOSTPORT
+        fromService:
+          type: web
+          name: pharmaml-api
+          property: hostport
+
+databases:
+  - name: pharmaml-db
+    plan: free
+    region: frankfurt
+    databaseName: pharmaml
+    user: pharmaml
