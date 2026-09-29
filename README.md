@@ -1,7 +1,7 @@
 # PharmaML
 
-[![CI](https://github.com/Rishi-Mishima/pharmPrediciton/actions/workflows/ci.yml/badge.svg)](https://github.com/Rishi-Mishima/pharmPrediciton/actions/workflows/ci.yml)
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Rishi-Mishima/pharmPrediciton)
+[![CI](https://github.com/Rishi-Mishima/pharmaflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Rishi-Mishima/pharmaflow/actions/workflows/ci.yml)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Rishi-Mishima/pharmaflow)
 
 PharmaML is a pharmaceutical demand forecasting and inventory intelligence platform. It combines a trained forecasting model, FastAPI, PostgreSQL, and a React operations dashboard in a production-shaped container stack.
 
