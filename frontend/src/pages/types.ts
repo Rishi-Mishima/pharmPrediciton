@@ -1,4 +1,4 @@
-import type { DemandHistory, Drug, ModelInfo } from "../types/api";
+import type { DemandHistory, Drug } from "../types/api";
 import type { EnrichedInventory } from "../utils/inventory";
 
 export type DashboardData = {
@@ -7,5 +7,4 @@ export type DashboardData = {
   enrichedInventory: EnrichedInventory[];
   demandHistory: DemandHistory[];
   latestForecast?: { date: string; demand: number };
-  modelInfo?: ModelInfo;
 };

@@ -1,74 +1,84 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Route, Routes } from "react-router-dom";
 import { getDemandHistory, getDrugs } from "./api/drugs";
 import { forecastDrug } from "./api/forecast";
 import { getHealth } from "./api/health";
 import { getInventory } from "./api/inventory";
-import { getModelInfo } from "./api/model";
-import { AppShell } from "./components/AppShell";
 import { sampleDemandHistory } from "./data/sampleDemand";
-import { AlertsPage } from "./pages/AlertsPage";
 import { DashboardPage } from "./pages/DashboardPage";
-import { DrugsPage } from "./pages/DrugsPage";
-import { ForecastingPage } from "./pages/ForecastingPage";
-import { InventoryPage } from "./pages/InventoryPage";
-import { ModelPerformancePage } from "./pages/ModelPerformancePage";
-import type { DemandHistory, Drug, HealthStatus, Inventory, ModelInfo } from "./types/api";
+import type { DemandHistory, Drug, HealthStatus, Inventory } from "./types/api";
 import { enrichInventory } from "./utils/inventory";
 
 export function App() {
   const [drugs, setDrugs] = useState<Drug[]>([]);
   const [inventory, setInventory] = useState<Inventory[]>([]);
   const [history, setHistory] = useState<DemandHistory[]>(sampleDemandHistory);
-  const [modelInfo, setModelInfo] = useState<ModelInfo>();
   const [health, setHealth] = useState<HealthStatus>();
-  const [latestForecast, setLatestForecast] = useState<{ date: string; demand: number }>();
+  const [latestForecast, setLatestForecast] = useState<{
+    date: string;
+    demand: number;
+  }>();
+  const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    const [healthResult, modelResult, drugsResult, inventoryResult] =
-      await Promise.allSettled([
-        getHealth(),
-        getModelInfo(),
-        getDrugs(),
-        getInventory(),
-      ]);
+    setIsLoading(true);
 
-    if (healthResult.status === "fulfilled") setHealth(healthResult.value);
-    if (modelResult.status === "fulfilled") setModelInfo(modelResult.value);
-    if (drugsResult.status === "fulfilled") setDrugs(drugsResult.value);
-    if (inventoryResult.status === "fulfilled") setInventory(inventoryResult.value);
+    try {
+      const [healthResult, drugsResult, inventoryResult] =
+        await Promise.allSettled([getHealth(), getDrugs(), getInventory()]);
 
-    const loadedDrugs =
-      drugsResult.status === "fulfilled" ? drugsResult.value : drugs;
-    const primaryDrug = loadedDrugs[0];
+      setHealth(
+        healthResult.status === "fulfilled" ? healthResult.value : undefined,
+      );
 
-    if (primaryDrug) {
+      const loadedDrugs =
+        drugsResult.status === "fulfilled" ? drugsResult.value : [];
+      setDrugs(loadedDrugs);
+      setInventory(
+        inventoryResult.status === "fulfilled" ? inventoryResult.value : [],
+      );
+
+      const primaryDrug = loadedDrugs[0];
+      if (!primaryDrug) {
+        setHistory(sampleDemandHistory);
+        setLatestForecast(undefined);
+        return;
+      }
+
       const [historyResult, forecastResult] = await Promise.allSettled([
         getDemandHistory(primaryDrug.id),
         forecastDrug(primaryDrug.id),
       ]);
 
-      if (historyResult.status === "fulfilled" && historyResult.value.length > 0) {
-        setHistory(historyResult.value);
-      }
+      setHistory(
+        historyResult.status === "fulfilled" && historyResult.value.length > 0
+          ? historyResult.value
+          : sampleDemandHistory,
+      );
 
-      if (forecastResult.status === "fulfilled") {
-        setLatestForecast({
-          date: forecastResult.value.forecast_date,
-          demand: forecastResult.value.predicted_demand,
-        });
-      }
+      setLatestForecast(
+        forecastResult.status === "fulfilled"
+          ? {
+              date: forecastResult.value.forecast_date,
+              demand: forecastResult.value.predicted_demand,
+            }
+          : undefined,
+      );
+    } finally {
+      setIsLoading(false);
     }
-  }, [drugs]);
+  }, []);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   const demandByDrugId = useMemo(() => {
-    const latest = latestForecast?.demand;
-    const drugId = drugs[0]?.id;
-    return drugId && latest ? { [drugId]: latest } : {};
+    const primaryDrugId = drugs[0]?.id;
+    if (!primaryDrugId || latestForecast?.demand === undefined) {
+      return {};
+    }
+
+    return { [primaryDrugId]: latestForecast.demand };
   }, [drugs, latestForecast]);
 
   const enrichedInventory = useMemo(
@@ -76,60 +86,18 @@ export function App() {
     [demandByDrugId, drugs, inventory],
   );
 
-  const dashboardData = {
-    drugs,
-    inventory: enrichedInventory,
-    enrichedInventory,
-    demandHistory: history,
-    latestForecast,
-    modelInfo,
-  };
-
   return (
-    <Routes>
-      <Route element={<AppShell health={health} onRefresh={refresh} />}>
-        <Route index element={<DashboardPage data={dashboardData} />} />
-        <Route
-          path="forecasting"
-          element={
-            <ForecastingPage
-              drugs={drugs}
-              inventory={enrichedInventory}
-              demandHistory={history}
-            />
-          }
-        />
-        <Route
-          path="inventory"
-          element={
-            <InventoryPage
-              drugs={drugs}
-              inventory={enrichedInventory}
-              onRefresh={refresh}
-            />
-          }
-        />
-        <Route
-          path="drugs"
-          element={
-            <DrugsPage
-              drugs={drugs}
-              inventory={enrichedInventory}
-              onRefresh={refresh}
-            />
-          }
-        />
-        <Route path="model" element={<ModelPerformancePage modelInfo={modelInfo} />} />
-        <Route
-          path="alerts"
-          element={
-            <AlertsPage
-              inventory={enrichedInventory}
-              forecastDemand={latestForecast?.demand}
-            />
-          }
-        />
-      </Route>
-    </Routes>
+    <DashboardPage
+      data={{
+        drugs,
+        inventory: enrichedInventory,
+        enrichedInventory,
+        demandHistory: history,
+        latestForecast,
+      }}
+      health={health}
+      isLoading={isLoading}
+      onRefresh={refresh}
+    />
   );
 }

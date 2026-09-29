@@ -6,8 +6,8 @@ export default {
       colors: {
         ink: "#152033",
         muted: "#64748b",
-        line: "#d9e2ec",
-        canvas: "#f5f7fb",
+        line: "#dfe4e8",
+        canvas: "#f6f7f8",
         brand: "#1667b7",
         teal: "#0f8c8c",
       },
