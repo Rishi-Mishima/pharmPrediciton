@@ -170,7 +170,7 @@ No database password or API hostname is committed. Render injects the PostgreSQL
 | `DATABASE_URL` | API and seed | PostgreSQL connection string; generic provider URLs are normalized for psycopg 3 |
 | `CORS_ORIGINS` | API | Comma-separated origins for direct browser API access |
 | `PORT` | API/frontend | Container listening port; cloud platforms can inject it |
-| `API_HOSTPORT` | frontend | Internal FastAPI host and port used by Nginx |
+| `API_HOSTPORT` | frontend | Full FastAPI upstream URL used by Nginx |
 | `VITE_API_BASE_URL` | Vite build | `/api` by default |
 
 ## Inventory Rules

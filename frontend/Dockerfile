@@ -12,7 +12,7 @@ RUN npm run build
 FROM nginx:1.29-alpine AS runtime
 
 ENV PORT=80
-ENV API_HOSTPORT=api:8000
+ENV API_HOSTPORT=http://api:8000
 
 COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html

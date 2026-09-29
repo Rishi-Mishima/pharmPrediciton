@@ -25,10 +25,7 @@ services:
     healthCheckPath: /healthz
     envVars:
       - key: API_HOSTPORT
-        fromService:
-          type: web
-          name: pharmaml-api
-          property: hostport
+        value: https://pharmaml-api.onrender.com
 
 databases:
   - name: pharmaml-db
