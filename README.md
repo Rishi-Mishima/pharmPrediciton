@@ -1,9 +1,20 @@
 # PharmaML
 
 [![CI](https://github.com/Rishi-Mishima/pharmPrediciton/actions/workflows/ci.yml/badge.svg)](https://github.com/Rishi-Mishima/pharmPrediciton/actions/workflows/ci.yml)
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Rishi-Mishima/pharmPrediciton)
+[![Live Dashboard](https://img.shields.io/badge/Live_Dashboard-Open-2ea44f?logo=render&logoColor=white)](https://pharmaml-dashboard.onrender.com)
+[![API Docs](https://img.shields.io/badge/API_Docs-Open-009688?logo=fastapi&logoColor=white)](https://pharmaml-api.onrender.com/docs)
 
 PharmaML is a pharmaceutical demand forecasting and inventory intelligence platform. It combines a trained forecasting model, FastAPI, PostgreSQL, and a React operations dashboard in a production-shaped container stack.
+
+## Live Deployment
+
+| Service | Link |
+|---|---|
+| Dashboard | [Open PharmaML](https://pharmaml-dashboard.onrender.com) |
+| API documentation | [Open Swagger UI](https://pharmaml-api.onrender.com/docs) |
+| API health | [Check API status](https://pharmaml-api.onrender.com/health) |
+
+The services run on Render's free tier and may take up to a minute to wake after a period of inactivity.
 
 ## Dashboard
 
@@ -151,17 +162,17 @@ The repository includes a [`render.yaml`](render.yaml) Blueprint that declares:
 - a Dockerized Nginx/React web service
 - a Dockerized FastAPI web service
 - a managed PostgreSQL database
-- private service-to-service API routing
-- health checks and idempotent pre-deploy seeding
+- frontend-to-API proxy routing
+- health checks and idempotent database seeding at API startup
 
-To deploy:
+The live deployment is available at [pharmaml-dashboard.onrender.com](https://pharmaml-dashboard.onrender.com). To create a separate deployment:
 
 1. Push the repository to GitHub.
-2. Click **Deploy to Render** at the top of this README, or create a new Blueprint in Render and select this repository.
+2. Open the [Render Blueprint setup](https://render.com/deploy?repo=https://github.com/Rishi-Mishima/pharmPrediciton), or create a new Blueprint in Render and select this repository.
 3. Review the three resources and apply the Blueprint.
 4. Open the generated `pharmaml-dashboard` URL after all health checks pass.
 
-No database password or API hostname is committed. Render injects the PostgreSQL connection string and internal API host from Blueprint resource references. See the official [Render Blueprint documentation](https://render.com/docs/infrastructure-as-code) for account and plan details.
+No database password is committed. Render injects the PostgreSQL connection string from the managed database resource. See the official [Render Blueprint documentation](https://render.com/docs/infrastructure-as-code) for account and plan details.
 
 ## Configuration
 
